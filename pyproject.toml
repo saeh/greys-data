@@ -13,3 +13,7 @@ dependencies = [
     "numpy>=2.4.4",
     "tqdm>=4.67.3",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data", "config", "scheduler"]
