@@ -90,8 +90,8 @@ def run_generate(mode: str = "inference", profile: bool = False, version_date: s
     # Save mappings (train mode) and samples (both modes)
     if mode == "train":
         save_mappings(dog_name_to_id, track_name_to_id)
-        CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-        cache_path = CACHE_ROOT / "train.pkl"
+        cache_dir = _ensure_cache_dir(version_date)
+        cache_path = cache_dir / "train.pkl"
         with open(cache_path, "wb") as f:
             pickle.dump({"samples": samples}, f)
     else:  # inference

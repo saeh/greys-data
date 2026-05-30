@@ -137,6 +137,38 @@ def drop_no_box(df: pl.DataFrame) -> pl.DataFrame:
 
 
 @check_size
+def drop_null_bsp_races(df: pl.DataFrame) -> pl.DataFrame:
+    races_with_bsp = (
+        df.group_by("idx")
+        .agg(pl.col("win_bsp").null_count().alias("bsp_null_count"))
+        .filter(pl.col("bsp_null_count") == 0)
+    ).select("idx")
+    return df.join(races_with_bsp, on="idx", how="inner")
+
+
+@check_size
+def drop_no_result_races(df: pl.DataFrame) -> pl.DataFrame:
+    races_with_result = (
+        df.group_by("idx")
+        .agg(pl.col("placenum").max().alias("max_placenum"))
+        .filter(pl.col("max_placenum") > 0)
+    ).select("idx")
+
+    df = df.join(races_with_result, on="idx", how="inner")
+
+    # Another case when then min placenum is not 1...
+    races_with_no_winner = (
+        df.group_by("idx")
+        .agg(pl.col("placenum").min().alias("min_placenum"))
+        .filter(pl.col("min_placenum") > 1)
+    ).select("idx")
+
+    df = df.filter(~pl.col("idx").is_in(races_with_no_winner["idx"]))
+
+    return df
+
+
+@check_size
 def drop_duplicates(df: pl.DataFrame) -> pl.DataFrame:
     df = df.unique()
     return df
@@ -149,6 +181,12 @@ def create_index(df: pl.DataFrame) -> pl.DataFrame:
         (pl.col("datetime_utc").cast(pl.String) + pl.col("track") +
          pl.col("racenum") + pl.col("quali").cast(pl.String)).alias("idx")
     )
+
+    # Standardize place column. "=" means a tie
+    df = df.with_columns(
+        pl.col("place").str.replace("=", "").cast(pl.Int32, strict=False).fill_null(0).alias("placenum")
+    )
+
     return df
 
 
@@ -281,11 +319,16 @@ def create_dog_form_features(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def create_race_result_features(df: pl.DataFrame) -> pl.DataFrame:
-
-    # Standardize place column. "=" means a tie
+    df = df.sort(["idx", "racebox"])
+    max_place = df.group_by("idx").agg(pl.col("placenum").max().alias("max_placenum"))
+    df = df.join(max_place, on="idx", how="left")
     df = df.with_columns(
-        pl.col("place").str.replace("=", "").cast(pl.Int32, strict=False).fill_null(0).alias("placenum")
-    )
+        pl.when(pl.col("placenum") == 0)
+        .then(pl.col("max_placenum") + 1)
+        .otherwise(pl.col("placenum"))
+        .cast(pl.Int32)
+        .alias("placenum")
+    ).drop("max_placenum")
 
     df = create_speedc(df)
 
@@ -351,6 +394,8 @@ def clean():
     # Remove bad rows
     train = drop_no_box(train)
     train = drop_duplicates(train)
+    train = drop_null_bsp_races(train)
+    train = drop_no_result_races(train)
 
     # Clean and create features
     train = clean_race_features(train)
@@ -378,6 +423,7 @@ def clean():
     todays_races = train.filter(pl.col("date") == dt_str)
     if todays_races.height > 0:
         print(f"Today's races ({dt_str}): {todays_races.select('idx').n_unique()} races found.")
+        todays_races.write_parquet("data/clean/inference.parquet")
     else:
         print(f"WARNING: No races found for today ({dt_str}).")
 

@@ -26,15 +26,22 @@ def cache_dir_for_date(version_date: str | None = None) -> Path:
     return CACHE_DIR / version_date
 
 
-def _latest_cache_dir() -> Path | None:
+def _find_latest_file(filename: str) -> Path:
     if not CACHE_DIR.exists():
-        return None
+        raise FileNotFoundError(f"No cache directory: {CACHE_DIR}")
 
-    date_dirs = [p for p in CACHE_DIR.iterdir() if p.is_dir()]
-    if not date_dirs:
-        return None
+    candidates = []
+    for date_dir in CACHE_DIR.iterdir():
+        if date_dir.is_dir():
+            file_path = date_dir / filename
+            if file_path.exists():
+                candidates.append(file_path)
 
-    return max(date_dirs, key=lambda p: p.name)
+    if not candidates:
+        raise FileNotFoundError(f"No {filename} files found under {CACHE_DIR}")
+
+    # Return the one with the latest modification time
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def load_mappings() -> dict[str, Any]:
@@ -42,32 +49,20 @@ def load_mappings() -> dict[str, Any]:
     return _load_cache(MAPPINGS_PATH)
 
 
-def latest_samples_path() -> Path:
-    cache_dir = _latest_cache_dir()
-    if cache_dir is None:
-        raise FileNotFoundError("No dated sample cache directories found under data/ml")
-
-    cache_path = cache_dir / "samples.pkl"
-    if not cache_path.exists():
-        raise FileNotFoundError(f"Sample cache file not found: {cache_path}")
-
-    return cache_path
-
-
 def load_train_cache() -> dict[str, Any]:
-    """Load the latest training samples from data/ml/YYYY-MM-DD/samples.pkl.
+    """Load the latest training samples from the most recent train.pkl file.
     
     Mappings are loaded separately via load_mappings().
     """
-    return _load_cache(latest_samples_path())
+    return _load_cache(_find_latest_file("train.pkl"))
 
 
 def load_inference_cache() -> dict[str, Any]:
-    """Load the latest inference samples from data/ml/YYYY-MM-DD/samples.pkl.
+    """Load the latest inference samples from the most recent inference.pkl file.
     
     Mappings are loaded separately via load_mappings().
     """
-    return _load_cache(latest_samples_path())
+    return _load_cache(_find_latest_file("inference.pkl"))
 
 
 def load_latest_cache(mode: str = "inference") -> dict[str, Any]:
@@ -75,16 +70,16 @@ def load_latest_cache(mode: str = "inference") -> dict[str, Any]:
     
     Note: This only loads samples. Call load_mappings() separately for mappings.
     """
-    if mode in {"train", "inference"}:
-        return _load_cache(latest_samples_path())
-    raise ValueError("mode must be 'train' or 'inference'")
+    filename = "train.pkl" if mode == "train" else "inference.pkl"
+    return _load_cache(_find_latest_file(filename))
 
 
 def cache_path(mode: str = "inference", version_date: str | None = None) -> Path:
-    """Return the samples cache path for the requested mode and optional version date."""
+    """Return the cache path for the requested mode and optional version date."""
     if mode not in {"train", "inference"}:
         raise ValueError("mode must be 'train' or 'inference'")
-    return cache_dir_for_date(version_date) / "samples.pkl"
+    filename = "train.pkl" if mode == "train" else "inference.pkl"
+    return cache_dir_for_date(version_date) / filename
 
 
 __all__ = [

@@ -259,6 +259,10 @@ def build_samples(
         padded_implied = np.zeros(MAX_DOGS, dtype=np.float32)
         padded_implied[:num_dogs] = implied
 
+        finish_pos = placings[sorted_idx]
+        padded_finish_pos = np.zeros(MAX_DOGS, dtype=np.float32)
+        padded_finish_pos[:num_dogs] = finish_pos
+
         try:
             winner_idx = np.where(placings == 1)[0][0]
             sorted_winner_idx = np.where(sorted_idx == winner_idx)[0][0]
@@ -270,6 +274,7 @@ def build_samples(
             sample["winner"] = sorted_winner_idx
 
         sample["implied_probs"] = padded_implied
+        sample["finish_positions"] = padded_finish_pos
         samples.append(sample)
 
     return samples
